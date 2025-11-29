@@ -1,0 +1,8 @@
+[workspace]
+members = ["chatroom-client","chatroom-server"]
+resolver = "2"
+
+[workspace.dependencies]
+tokio = {version = "1", features = ["full"]}
+anyhow = "1"
+uuid = { version = "1", features = ["v4"] }
