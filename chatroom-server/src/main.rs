@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use anyhow::Result;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufStream};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -10,16 +11,15 @@ const SERVER_PORT: u16 = 8892;
 
 #[derive(Default)]
 struct ServerState {
-    connections: HashMap<Arc<str>, Arc<Mutex<BufStream<TcpStream>>>>
+    connections: HashMap<Arc<str>, OwnedWriteHalf>
 }
 
 async fn broadcast_message(state: Arc<Mutex<ServerState>>, conn_id: Arc<str>, msg: Vec<u8>) -> Result<()> {
     let mut broadcast_count = 0;
-    for (target_conn_id, target_stream) in state.lock().await.connections.iter() {
+    for (target_conn_id, target_stream) in state.lock().await.connections.iter_mut() {
         if *target_conn_id == conn_id {
             break;
         }
-        let mut target_stream = target_stream.lock().await;
         target_stream.write_all(&msg).await?;
         broadcast_count += 1;
     }
@@ -29,15 +29,15 @@ async fn broadcast_message(state: Arc<Mutex<ServerState>>, conn_id: Arc<str>, ms
 
 async fn handle_connection(state: Arc<Mutex<ServerState>>, stream: TcpStream) -> Result<()> {
     let conn_id: Arc<str> = Uuid::new_v4().to_string().into();
-    let stream = Arc::new(Mutex::new(BufStream::new(stream)));
+    let (read_stream, write_stream) = stream.into_split();
     // Register connection
     {
-        state.lock().await.connections.insert(Arc::clone(&conn_id), Arc::clone(&stream));
+        state.lock().await.connections.insert(Arc::clone(&conn_id), write_stream);
         println!("Connection established: {}", conn_id);
     }
-    let mut stream_mut = stream.lock().await;
+    let mut reader = BufReader::new(read_stream);
     let mut buf = String::new();
-    while let Ok(bytes_read) = stream_mut.read_line(&mut buf).await {
+    while let Ok(bytes_read) = reader.read_line(&mut buf).await {
         if bytes_read == 0 { break; }
         // Broadcast message to all connections except self
         let buf_cloned = buf.as_bytes().to_vec();
