@@ -18,7 +18,7 @@ async fn broadcast_message(state: Arc<Mutex<ServerState>>, conn_id: Arc<str>, ms
     let mut broadcast_count = 0;
     for (target_conn_id, target_stream) in state.lock().await.connections.iter_mut() {
         if *target_conn_id == conn_id {
-            break;
+            continue;
         }
         target_stream.write_all(&msg).await?;
         broadcast_count += 1;

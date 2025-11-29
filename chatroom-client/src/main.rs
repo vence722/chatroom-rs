@@ -7,7 +7,7 @@ const SERVER_ADDRESS: &str = "0.0.0.0:8892";
 
 async fn handle_receive_message(read_stream: OwnedReadHalf) -> Result<()> {
     let mut reader = BufReader::new(read_stream);
-    let mut buf = String::with_capacity(10240);
+    let mut buf = String::with_capacity(1024);
     while let Ok(_) = reader.read_line(&mut buf).await {
         println!("receive message: {}", buf.trim());
         buf.clear();
@@ -21,7 +21,6 @@ async fn main() -> Result<()>{
     tokio::spawn(handle_receive_message(read_stream));
     let msg = "Hello, world!\n";
     loop {
-        write_stream.write_all(msg.as_bytes()).await?;
         write_stream.write_all(msg.as_bytes()).await?;
         write_stream.flush().await?;
         println!("sent message: {}", msg.trim());
