@@ -8,12 +8,13 @@ use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+const SERVER_HOST: &str = "0.0.0.0";
 const SERVER_PORT: u16 = 8892;
 
 #[derive(Default)]
 struct ServerState {
-    connections: HashMap<Arc<str>, OwnedWriteHalf>,
-    connections_count: atomic::AtomicUsize,
+    connections: HashMap<Arc<str>, Arc<Mutex<OwnedWriteHalf>>>,
+    connections_count: atomic::AtomicUsize
 }
 
 async fn report_connection_count(state: Arc<Mutex<ServerState>>) -> Result<()> {
@@ -26,20 +27,28 @@ async fn report_connection_count(state: Arc<Mutex<ServerState>>) -> Result<()> {
 
 async fn broadcast_message(state: Arc<Mutex<ServerState>>, conn_id: Arc<str>, msg: Vec<u8>) -> Result<()> {
     // let mut broadcast_count = 0;
-    for (target_conn_id, target_stream) in state.lock().await.connections.iter_mut() {
-        if *target_conn_id == conn_id {
-            continue;
+    let mut connection_refs = Vec::with_capacity(128);
+    {
+        for (target_conn_id, target_stream) in state.lock().await.connections.iter() {
+            if *target_conn_id == conn_id {
+                continue;
+            }
+            connection_refs.push(Arc::clone(target_stream));
         }
-        target_stream.write_all(&msg).await?;
-        // broadcast_count += 1;
     }
-    // println!("Broadcast a message to {} clients", broadcast_count);
+    let broadcast_count = connection_refs.len();
+    for connection_ref in connection_refs.into_iter() {
+        let mut conn = connection_ref.lock().await;
+        conn.write_all(msg.as_ref()).await?;
+        conn.flush().await?;
+    }
+    println!("Broadcast a message to {} clients", broadcast_count);
     Ok(())
 }
 
 async fn register_connection(state: &Arc<Mutex<ServerState>>, conn_id: &Arc<str>, write_stream: OwnedWriteHalf) -> Result<()> {
     let mut state_mut = state.lock().await;
-    state_mut.connections.insert(Arc::clone(&conn_id), write_stream);
+    state_mut.connections.insert(Arc::clone(&conn_id), Arc::new(Mutex::new(write_stream)));
     state_mut.connections_count.fetch_add(1, atomic::Ordering::Relaxed);
     println!("Connection established: {}", conn_id);
     Ok(())
@@ -59,7 +68,7 @@ async fn handle_connection(state: Arc<Mutex<ServerState>>, stream: TcpStream) ->
     // Register connection
     register_connection(&state, &conn_id, write_stream).await?;
     let mut reader = BufReader::new(read_stream);
-    let mut buf = String::new();
+    let mut buf = String::with_capacity(1024);
     while let Ok(bytes_read) = reader.read_line(&mut buf).await {
         if bytes_read == 0 { break; }
         // Broadcast message to all connections except self
@@ -74,9 +83,12 @@ async fn handle_connection(state: Arc<Mutex<ServerState>>, stream: TcpStream) ->
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let listener = TcpListener::bind(&format!("0.0.0.0:{}", SERVER_PORT)).await?;
+    // Initialization
+    let listener = TcpListener::bind(&format!("{}:{}", SERVER_HOST, SERVER_PORT)).await?;
     let state = Arc::new(Mutex::new(ServerState::default()));
+    // Spawn report connection count task
     tokio::spawn(report_connection_count(Arc::clone(&state)));
+    // Handling incoming connections
     while let Ok((stream, _)) = listener.accept().await {
         tokio::spawn(handle_connection(Arc::clone(&state), stream));
     }
