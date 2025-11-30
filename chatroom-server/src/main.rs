@@ -37,16 +37,27 @@ async fn broadcast_message(state: Arc<Mutex<ServerState>>, conn_id: Arc<str>, ms
     Ok(())
 }
 
+async fn register_connection(state: &Arc<Mutex<ServerState>>, conn_id: &Arc<str>, write_stream: OwnedWriteHalf) -> Result<()> {
+    let mut state_mut = state.lock().await;
+    state_mut.connections.insert(Arc::clone(&conn_id), write_stream);
+    state_mut.connections_count.fetch_add(1, atomic::Ordering::Relaxed);
+    println!("Connection established: {}", conn_id);
+    Ok(())
+}
+
+async fn unregister_connection(state: &Arc<Mutex<ServerState>>, conn_id: &Arc<str>) -> Result<()> {
+    let mut state_mut = state.lock().await;
+    state_mut.connections.remove(conn_id);
+    state_mut.connections_count.fetch_sub(1, atomic::Ordering::Relaxed);
+    println!("Connection closed: {}", conn_id);
+    Ok(())
+}
+
 async fn handle_connection(state: Arc<Mutex<ServerState>>, stream: TcpStream) -> Result<()> {
     let conn_id: Arc<str> = Uuid::new_v4().to_string().into();
     let (read_stream, write_stream) = stream.into_split();
     // Register connection
-    {
-        let mut state_mut = state.lock().await;
-        state_mut.connections.insert(Arc::clone(&conn_id), write_stream);
-        state_mut.connections_count.fetch_add(1, atomic::Ordering::Relaxed);
-        println!("Connection established: {}", conn_id);
-    }
+    register_connection(&state, &conn_id, write_stream).await?;
     let mut reader = BufReader::new(read_stream);
     let mut buf = String::new();
     while let Ok(bytes_read) = reader.read_line(&mut buf).await {
@@ -57,12 +68,7 @@ async fn handle_connection(state: Arc<Mutex<ServerState>>, stream: TcpStream) ->
         buf.clear();
     }
     // Unregister connection
-    {
-        let mut state_mut = state.lock().await;
-        state_mut.connections.remove(&conn_id);
-        state_mut.connections_count.fetch_sub(1, atomic::Ordering::Relaxed);
-        println!("Connection closed: {}", conn_id);
-    }
+    unregister_connection(&state, &conn_id).await?;
     Ok(())
 }
 
