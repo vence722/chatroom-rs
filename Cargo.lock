@@ -46,6 +46,7 @@ name = "chatroom-client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chatroom-proto",
  "tokio",
 ]
 
@@ -62,6 +63,7 @@ name = "chatroom-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chatroom-proto",
  "dashmap",
  "tokio",
  "uuid",

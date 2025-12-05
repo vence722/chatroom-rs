@@ -8,3 +8,4 @@ tokio.workspace = true
 anyhow.workspace = true
 uuid.workspace = true
 dashmap.workspace = true
+chatroom-proto = { path = "../chatroom-proto" }
