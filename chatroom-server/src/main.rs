@@ -11,13 +11,12 @@ use crate::types::ServerState;
 use anyhow::Result;
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tokio::sync::Mutex;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialization
     let listener = TcpListener::bind(&format!("{}:{}", SERVER_HOST, SERVER_PORT)).await?;
-    let state = Arc::new(Mutex::new(ServerState::default()));
+    let state = Arc::new(ServerState::default());
     // Spawn report connection count task
     tokio::spawn(report_connection_count(Arc::clone(&state)));
     // Handling incoming connections
