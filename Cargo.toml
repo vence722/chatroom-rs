@@ -1,8 +1,10 @@
 [workspace]
-members = ["chatroom-client","chatroom-server"]
+members = ["chatroom-client","chatroom-server","chatroom-proto"]
 resolver = "2"
 
 [workspace.dependencies]
 tokio = {version = "1", features = ["full"]}
 anyhow = "1"
 uuid = { version = "1", features = ["v4"] }
+dashmap = "6"
+prost = "0.14"

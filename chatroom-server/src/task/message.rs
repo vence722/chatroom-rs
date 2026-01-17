@@ -10,11 +10,11 @@ pub(crate) async fn broadcast_message(
     // let mut broadcast_count = 0;
     let mut connection_refs = Vec::with_capacity(128);
     {
-        for entry in state.connections.iter() {
-            if *entry.key() == conn_id {
+        for connection_entry in state.connections.iter() {
+            if *connection_entry.key() == conn_id {
                 continue;
             }
-            connection_refs.push(Arc::clone(entry.value()));
+            connection_refs.push(Arc::clone(connection_entry.value()));
         }
     }
     let broadcast_count = connection_refs.len();
